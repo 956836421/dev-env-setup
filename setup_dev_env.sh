@@ -383,6 +383,10 @@ install_tool() {
     
     case $tool in
         htop|tmux|tree|jq)
+            if check_command $tool; then
+                log_warn "$tool already installed, skipping..."
+                return
+            fi
             case $os_type in
                 macos) brew install $tool || true ;;
                 debian) sudo apt-get install -y $tool ;;
@@ -390,6 +394,10 @@ install_tool() {
             esac
             ;;
         ripgrep)
+            if check_command rg; then
+                log_warn "ripgrep already installed, skipping..."
+                return
+            fi
             case $os_type in
                 macos) brew install ripgrep || true ;;
                 debian) sudo apt-get install -y ripgrep ;;
@@ -397,6 +405,10 @@ install_tool() {
             esac
             ;;
         fzf)
+            if check_command fzf; then
+                log_warn "fzf already installed, skipping..."
+                return
+            fi
             case $os_type in
                 macos) brew install fzf || true ;;
                 debian) sudo apt-get install -y fzf ;;
@@ -404,6 +416,10 @@ install_tool() {
             esac
             ;;
         bat)
+            if check_command bat; then
+                log_warn "bat already installed, skipping..."
+                return
+            fi
             case $os_type in
                 macos) brew install bat || true ;;
                 debian) sudo apt-get install -y bat ;;
@@ -411,20 +427,26 @@ install_tool() {
             esac
             ;;
         eza)
+            if check_command eza; then
+                log_warn "eza already installed, skipping..."
+                return
+            fi
             case $os_type in
                 macos) brew install eza || true ;;
                 debian)
-                    if ! check_command eza; then
-                        sudo mkdir -p /etc/apt/keyrings
-                        wget -qO- https://raw.githubusercontent.com/eza-community/eza/main/deb.asc | sudo gpg --dearmor -o /etc/apt/keyrings/eza.gpg 2>/dev/null || true
-                        echo "deb [signed-by=/etc/apt/keyrings/eza.gpg] http://deb.gierens.de stable main" | sudo tee /etc/apt/sources.list.d/eza.list
-                        sudo apt-get update && sudo apt-get install -y eza || true
-                    fi
+                    sudo mkdir -p /etc/apt/keyrings
+                    wget -qO- https://raw.githubusercontent.com/eza-community/eza/main/deb.asc | sudo gpg --dearmor -o /etc/apt/keyrings/eza.gpg 2>/dev/null || true
+                    echo "deb [signed-by=/etc/apt/keyrings/eza.gpg] http://deb.gierens.de stable main" | sudo tee /etc/apt/sources.list.d/eza.list
+                    sudo apt-get update && sudo apt-get install -y eza || true
                     ;;
                 redhat|fedora) sudo dnf install -y eza 2>/dev/null || true ;;
             esac
             ;;
         fd)
+            if check_command fd || check_command fdfind; then
+                log_warn "fd already installed, skipping..."
+                return
+            fi
             case $os_type in
                 macos) brew install fd || true ;;
                 debian)
