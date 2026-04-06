@@ -10,40 +10,9 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 
 INTERACTIVE=true
-SELECTED_TOOLS=()
+SELECTED_TOOLS=""
 OS_TYPE=""
 ARCH=""
-
-declare -A TOOL_INFO=(
-    [htop]="Process viewer|htop|htop"
-    [tmux]="Terminal multiplexer|tmux|tmux"
-    [tree]="Directory tree viewer|tree|tree"
-    [ripgrep]="Fast grep (rg)|rg|ripgrep"
-    [fzf]="Fuzzy finder|fzf|fzf"
-    [bat]="Cat with syntax highlighting|bat|bat"
-    [eza]="Modern ls replacement|eza|eza"
-    [fd]="Fast find replacement|fd|fd-find"
-    [jq]="JSON processor|jq|jq"
-    [nvm]="Node.js version manager||nvm"
-    [pyenv]="Python version manager||pyenv"
-    [go]="Go programming language|go|go"
-    [rust]="Rust programming language|rustc|rust"
-    [starship]="Cross-shell prompt|starship|starship"
-    [zoxide]="Smart cd command|zoxide|zoxide"
-)
-
-declare -A TOOL_DESC=()
-declare -A TOOL_CHECK=()
-declare -A TOOL_PKG=()
-
-init_tool_info() {
-    for tool in "${!TOOL_INFO[@]}"; do
-        IFS='|' read -r desc check pkg <<< "${TOOL_INFO[$tool]}"
-        TOOL_DESC[$tool]="$desc"
-        TOOL_CHECK[$tool]="$check"
-        TOOL_PKG[$tool]="$pkg"
-    done
-}
 
 log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
@@ -63,7 +32,8 @@ detect_os() {
 }
 
 check_command() { command -v "$1" &> /dev/null; }
-in_array() { local n="$1"; shift; local i; for i in "$@"; do [[ "$i" == "$n" ]] && return 0; done; return 1; }
+
+in_selected() { [[ "$SELECTED_TOOLS" == *"$1"* ]]; }
 
 show_help() {
     cat << EOF
@@ -88,7 +58,7 @@ parse_args() {
     while [[ $# -gt 0 ]]; do
         case $1 in
             --htop|--tmux|--tree|--ripgrep|--fzf|--bat|--eza|--fd|--jq|--nvm|--pyenv|--go|--rust|--starship|--zoxide)
-                SELECTED_TOOLS+=("${1#--}") ;;
+                SELECTED_TOOLS="$SELECTED_TOOLS ${1#--}" ;;
             -y|--yes) INTERACTIVE=false ;;
             -h|--help) show_help; exit 0 ;;
             *) log_error "Unknown option: $1"; show_help; exit 1 ;;
@@ -98,12 +68,12 @@ parse_args() {
 }
 
 ask_install() {
-    local tool="$1"
+    local tool="$1" desc="$2"
     [ "$INTERACTIVE" = false ] && return 1
-    in_array "$tool" "${SELECTED_TOOLS[@]}" && return 0
-    echo -e -n "${CYAN}  [$tool]${NC} ${TOOL_DESC[$tool]} [y/N]: "
+    in_selected "$tool" && return 0
+    echo -e -n "${CYAN}  [$tool]${NC} $desc [y/N]: "
     read -r response
-    [[ "$response" =~ ^[yY]([eE][sS])?$ ]] && SELECTED_TOOLS+=("$tool") && return 0
+    [[ "$response" =~ ^[yY]([eE][sS])?$ ]] && SELECTED_TOOLS="$SELECTED_TOOLS $tool" && return 0
     return 1
 }
 
@@ -114,11 +84,23 @@ show_interactive_menu() {
     echo -e "${BLUE}╚══════════════════════════════════════════════════════╝${NC}"
     echo ""
     echo -e "${CYAN}CLI Tools:${NC}"
-    for t in htop tmux tree ripgrep fzf bat eza fd jq; do ask_install "$t" || true; done
+    ask_install htop "Process viewer" || true
+    ask_install tmux "Terminal multiplexer" || true
+    ask_install tree "Directory tree viewer" || true
+    ask_install ripgrep "Fast grep (rg)" || true
+    ask_install fzf "Fuzzy finder" || true
+    ask_install bat "Cat with syntax highlighting" || true
+    ask_install eza "Modern ls replacement" || true
+    ask_install fd "Fast find replacement" || true
+    ask_install jq "JSON processor" || true
     echo -e "\n${CYAN}Dev Tools:${NC}"
-    for t in nvm pyenv go rust; do ask_install "$t" || true; done
+    ask_install nvm "Node.js version manager" || true
+    ask_install pyenv "Python version manager" || true
+    ask_install go "Go programming language" || true
+    ask_install rust "Rust programming language" || true
     echo -e "\n${CYAN}Other:${NC}"
-    for t in starship zoxide; do ask_install "$t" || true; done
+    ask_install starship "Cross-shell prompt" || true
+    ask_install zoxide "Smart cd command" || true
     echo ""
 }
 
@@ -133,18 +115,23 @@ install_package() {
 
 install_dependencies() {
     log_info "Installing dependencies..."
-    local pkgs="git curl wget zsh build-essential"
-    [ "$OS_TYPE" = "macos" ] && pkgs="git curl wget zsh"
-    [ "$OS_TYPE" = "redhat" ] || [ "$OS_TYPE" = "fedora" ] && pkgs="git curl wget zsh gcc gcc-c++ make"
-    
     case $OS_TYPE in
         macos)
             check_command brew || /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-            brew install $pkgs || true
+            brew install git curl wget zsh || true
             ;;
-        debian) sudo apt-get update && sudo apt-get install -y $pkgs ;;
-        redhat|fedora) sudo yum install -y $pkgs 2>/dev/null || sudo dnf install -y $pkgs ;;
-        *) log_warn "Unknown distro, trying apt..."; sudo apt-get update && sudo apt-get install -y $pkgs 2>/dev/null || true ;;
+        debian)
+            sudo apt-get update
+            sudo apt-get install -y git curl wget zsh build-essential
+            ;;
+        redhat|fedora)
+            sudo yum install -y git curl wget zsh gcc gcc-c++ make 2>/dev/null || sudo dnf install -y git curl wget zsh gcc gcc-c++ make
+            ;;
+        *)
+            log_warn "Unknown distro, trying apt..."
+            sudo apt-get update 2>/dev/null || true
+            sudo apt-get install -y git curl wget zsh build-essential 2>/dev/null || true
+            ;;
     esac
 }
 
@@ -153,8 +140,11 @@ install_oh_my_zsh() {
     [ -d "$HOME/.oh-my-zsh" ] && log_warn "Oh My Zsh already installed, skipping..." && return 0
     
     local script="https://gitee.com/mirrors/oh-my-zsh/raw/master/tools/install.sh"
-    check_command curl && sh -c "$(curl -fsSL $script)" "" --unattended || \
-    check_command wget && sh -c "$(wget -qO- $script)" "" --unattended
+    if check_command curl; then
+        sh -c "$(curl -fsSL $script)" "" --unattended
+    elif check_command wget; then
+        sh -c "$(wget -qO- $script)" "" --unattended
+    fi
     
     [ -d "$HOME/.oh-my-zsh" ] && log_info "Oh My Zsh installed successfully"
 }
@@ -180,13 +170,20 @@ configure_zsh() {
     local zshrc="$HOME/.zshrc"
     [ -f "$zshrc" ] && cp "$zshrc" "$zshrc.backup.$(date +%Y%m%d_%H%M%S)"
     
-    sed -i.bak 's/^ZSH_THEME=.*/ZSH_THEME="ys"/' "$zshrc" 2>/dev/null || echo 'ZSH_THEME="ys"' >> "$zshrc"
-    rm -f "${zshrc}.bak"
+    if grep -q "^ZSH_THEME=" "$zshrc" 2>/dev/null; then
+        sed -i.bak 's/^ZSH_THEME=.*/ZSH_THEME="ys"/' "$zshrc"
+        rm -f "${zshrc}.bak"
+    else
+        echo 'ZSH_THEME="ys"' >> "$zshrc"
+    fi
     
-    grep -q "zsh-syntax-highlighting" "$zshrc" || \
-        sed -i.bak 's/^plugins=(/plugins=(zsh-syntax-highlighting zsh-autosuggestions /' "$zshrc" 2>/dev/null || \
+    if grep -q "^plugins=" "$zshrc" 2>/dev/null; then
+        grep -q "zsh-syntax-highlighting" "$zshrc" || \
+            sed -i.bak 's/^plugins=(/plugins=(zsh-syntax-highlighting zsh-autosuggestions /' "$zshrc"
+        rm -f "${zshrc}.bak"
+    else
         echo 'plugins=(git zsh-syntax-highlighting zsh-autosuggestions)' >> "$zshrc"
-    rm -f "${zshrc}.bak"
+    fi
     
     log_info "Zsh configured with theme 'ys' and plugins"
 }
@@ -205,8 +202,11 @@ install_miniforge() {
     local tsinghua="https://mirrors.tuna.tsinghua.edu.cn/github-release/conda-forge/miniforge/LatestRelease"
     local github="https://github.com/conda-forge/miniforge/releases/latest/download"
     
-    curl -fsSL --connect-timeout 10 "$tsinghua/$installer" -o "$tmp/$installer" || \
-    curl -fsSL "$github/$installer" -o "$tmp/$installer" || { log_error "Failed to download Miniforge"; exit 1; }
+    if curl -fsSL --connect-timeout 10 "$tsinghua/$installer" -o "$tmp/$installer"; then
+        log_info "Downloaded from Tsinghua mirror"
+    else
+        curl -fsSL "$github/$installer" -o "$tmp/$installer" || { log_error "Failed to download"; rm -rf "$tmp"; exit 1; }
+    fi
     
     bash "$tmp/$installer" -b -p "$HOME/miniforge3"
     rm -rf "$tmp"
@@ -230,29 +230,36 @@ change_default_shell() {
     chsh -s "$(which zsh)" || log_warn "Failed, please run: chsh -s \$(which zsh)"
 }
 
-install_eza() {
-    [ "$OS_TYPE" = "macos" ] && { brew install eza || true; return; }
-    [ "$OS_TYPE" = "redhat" ] || [ "$OS_TYPE" = "fedora" ] && { sudo dnf install -y eza 2>/dev/null || true; return; }
-    
-    sudo mkdir -p /etc/apt/keyrings
-    wget -qO- https://raw.githubusercontent.com/eza-community/eza/main/deb.asc | sudo gpg --dearmor -o /etc/apt/keyrings/eza.gpg 2>/dev/null || true
-    echo "deb [signed-by=/etc/apt/keyrings/eza.gpg] http://deb.gierens.de stable main" | sudo tee /etc/apt/sources.list.d/eza.list
-    sudo apt-get update && sudo apt-get install -y eza || true
-}
-
-install_fd() {
-    [ "$OS_TYPE" = "macos" ] && { brew install fd || true; return; }
-    
-    install_package fd-find || true
-    [ "$OS_TYPE" = "debian" ] && {
-        mkdir -p "$HOME/.local/bin"
-        ln -sf "$(which fdfind 2>/dev/null || echo /usr/bin/fdfind)" "$HOME/.local/bin/fd" 2>/dev/null || true
-    }
-}
-
 add_to_zshrc() {
-    local content="$1"
-    grep -q "$content" "$HOME/.zshrc" 2>/dev/null || echo -e "\n$content" >> "$HOME/.zshrc"
+    grep -q "$1" "$HOME/.zshrc" 2>/dev/null || echo -e "\n$1" >> "$HOME/.zshrc"
+}
+
+install_cli_tool() {
+    local tool="$1" check="$2" pkg="$3"
+    check_command "$check" && log_warn "$tool already installed, skipping..." && return
+    
+    case $tool in
+        eza)
+            [ "$OS_TYPE" = "macos" ] && { brew install eza || true; return; }
+            [ "$OS_TYPE" = "redhat" ] || [ "$OS_TYPE" = "fedora" ] && { sudo dnf install -y eza 2>/dev/null || true; return; }
+            sudo mkdir -p /etc/apt/keyrings
+            wget -qO- https://raw.githubusercontent.com/eza-community/eza/main/deb.asc | sudo gpg --dearmor -o /etc/apt/keyrings/eza.gpg 2>/dev/null || true
+            echo "deb [signed-by=/etc/apt/keyrings/eza.gpg] http://deb.gierens.de stable main" | sudo tee /etc/apt/sources.list.d/eza.list
+            sudo apt-get update && sudo apt-get install -y eza || true
+            ;;
+        fd)
+            [ "$OS_TYPE" = "macos" ] && { brew install fd || true; return; }
+            install_package fd-find || true
+            [ "$OS_TYPE" = "debian" ] && mkdir -p "$HOME/.local/bin" && ln -sf "$(which fdfind 2>/dev/null || echo /usr/bin/fdfind)" "$HOME/.local/bin/fd" 2>/dev/null || true
+            ;;
+        ripgrep)
+            check_command rg && log_warn "ripgrep already installed" && return
+            install_package ripgrep
+            ;;
+        *)
+            install_package "$pkg"
+            ;;
+    esac
 }
 
 install_nvm() {
@@ -277,8 +284,11 @@ eval "$(pyenv init -)"'
 install_go() {
     check_command go && log_warn "Go already installed" && return
     local ver="1.22.1" file
-    [ "$OS_TYPE" = "macos" ] && [ "$ARCH" = "arm64" ] && file="go${ver}.darwin-arm64.tar.gz" || file="go${ver}.darwin-amd64.tar.gz"
-    [ "$OS_TYPE" != "macos" ] && [ "$ARCH" = "aarch64" ] && file="go${ver}.linux-arm64.tar.gz" || file="go${ver}.linux-amd64.tar.gz"
+    if [ "$OS_TYPE" = "macos" ]; then
+        [ "$ARCH" = "arm64" ] && file="go${ver}.darwin-arm64.tar.gz" || file="go${ver}.darwin-amd64.tar.gz"
+    else
+        [ "$ARCH" = "aarch64" ] && file="go${ver}.linux-arm64.tar.gz" || file="go${ver}.linux-amd64.tar.gz"
+    fi
     
     local tmp=$(mktemp -d)
     curl -fsSL "https://golang.google.cn/dl/$file" -o "$tmp/$file"
@@ -303,8 +313,11 @@ export RUSTUP_UPDATE_ROOT="https://rsproxy.cn/rustup"
 install_starship() {
     check_command starship && log_warn "Starship already installed" && return
     local file
-    [ "$OS_TYPE" = "macos" ] && [ "$ARCH" = "arm64" ] && file="starship-aarch64-apple-darwin.tar.gz" || file="starship-x86_64-apple-darwin.tar.gz"
-    [ "$OS_TYPE" != "macos" ] && [ "$ARCH" = "aarch64" ] && file="starship-aarch64-unknown-linux-gnu.tar.gz" || file="starship-x86_64-unknown-linux-gnu.tar.gz"
+    if [ "$OS_TYPE" = "macos" ]; then
+        [ "$ARCH" = "arm64" ] && file="starship-aarch64-apple-darwin.tar.gz" || file="starship-x86_64-apple-darwin.tar.gz"
+    else
+        [ "$ARCH" = "aarch64" ] && file="starship-aarch64-unknown-linux-gnu.tar.gz" || file="starship-x86_64-unknown-linux-gnu.tar.gz"
+    fi
     
     local tmp=$(mktemp -d)
     curl -fsSL "https://ghproxy.com/https://github.com/starship/starship/releases/latest/download/$file" -o "$tmp/$file" || \
@@ -329,16 +342,18 @@ install_zoxide() {
 
 install_tool() {
     local tool="$1"
-    local check="${TOOL_CHECK[$tool]}"
-    local pkg="${TOOL_PKG[$tool]}"
-    
-    [ -n "$check" ] && check_command "$check" && log_warn "$tool already installed, skipping..." && return
-    
     log_info "Installing $tool..."
+    
     case $tool in
-        htop|tmux|tree|jq|ripgrep|fzf|bat) install_package "$pkg" ;;
-        eza) install_eza ;;
-        fd) install_fd ;;
+        htop) install_cli_tool htop htop htop ;;
+        tmux) install_cli_tool tmux tmux tmux ;;
+        tree) install_cli_tool tree tree tree ;;
+        jq) install_cli_tool jq jq jq ;;
+        ripgrep) install_cli_tool ripgrep rg ripgrep ;;
+        fzf) install_cli_tool fzf fzf fzf ;;
+        bat) install_cli_tool bat bat bat ;;
+        eza) install_cli_tool eza eza eza ;;
+        fd) install_cli_tool fd fd fd-find ;;
         nvm) install_nvm ;;
         pyenv) install_pyenv ;;
         go) install_go ;;
@@ -349,19 +364,18 @@ install_tool() {
 }
 
 install_selected_tools() {
-    [ ${#SELECTED_TOOLS[@]} -eq 0 ] && return
-    log_info "Installing selected tools: ${SELECTED_TOOLS[*]}"
-    for tool in "${SELECTED_TOOLS[@]}"; do install_tool "$tool"; done
+    [ -z "$SELECTED_TOOLS" ] && return
+    log_info "Installing selected tools:$SELECTED_TOOLS"
+    for tool in $SELECTED_TOOLS; do install_tool "$tool"; done
 }
 
 main() {
-    init_tool_info
     parse_args "$@"
     
     OS_TYPE=$(detect_os)
     ARCH=$(uname -m)
     
-    [ "$INTERACTIVE" = true ] && [ ${#SELECTED_TOOLS[@]} -eq 0 ] && show_interactive_menu
+    [ "$INTERACTIVE" = true ] && [ -z "$SELECTED_TOOLS" ] && show_interactive_menu
     
     log_info "Starting installation..."
     log_info "OS: $OS_TYPE, Arch: $ARCH"
